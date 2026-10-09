@@ -1,0 +1,167 @@
+{
+  "name": "Release Notes and Changelog Drafter from Git Commits",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "commits",
+              "name": "git_commits",
+              "value": "feat: add user login with email and password\nfix: resolve login validation error\nfeat: add password reset functionality\nfix: improve error message for invalid credentials\ndocs: update README with setup instructions\nrefactor: simplify authentication service",
+              "type": "string"
+            },
+            {
+              "id": "version",
+              "name": "version",
+              "value": "v1.0.0",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b9b446e4-bb26-47be-88de-f70437447263",
+      "name": "Git Commits Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer Groq_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ model: 'openai/gpt-oss-20b', temperature: 0.2, messages: [{ role: 'system', content: 'You are a professional software release notes and changelog writer. Convert raw Git commits into clear, concise, user-friendly release notes and a structured changelog. Group changes into Added, Changed, Fixed, Documentation, and Other when applicable. Do not invent features or details that are not present in the commits. Return ONLY valid JSON with exactly these keys: release_title, summary, release_notes, changelog. release_notes must be an array of strings. changelog must be an object whose keys are Added, Changed, Fixed, Documentation, Other and whose values are arrays of strings.' }, { role: 'user', content: 'Version: ' + $json.version + '\\n\\nGit commits:\\n' + $json.git_commits }] }) }}",
+        "options": {}
+      },
+      "id": "76a67cc8-1ad0-4749-abb6-f10c3866219d",
+      "name": "Groq - Draft Release Notes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        432,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const content = $json.choices?.[0]?.message?.content;\n\nif (!content) {\n  throw new Error('Groq did not return a response. Check your API key and request.');\n}\n\nlet result;\ntry {\n  result = JSON.parse(content);\n} catch (error) {\n  const cleaned = content.replace(/^```json\\s*/i, '').replace(/\\s*```$/i, '').trim();\n  result = JSON.parse(cleaned);\n}\n\nreturn [{\n  json: {\n    version: $('Git Commits Input').first().json.version,\n    release_title: result.release_title,\n    summary: result.summary,\n    release_notes: result.release_notes,\n    changelog: result.changelog,\n    generated_by: 'n8n + Groq API'\n  }\n}];"
+      },
+      "id": "83d189ee-93fc-449c-8e24-f64a8f94bd48",
+      "name": "Format Final Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nconst added = data.changelog?.Added || [];\nconst changed = data.changelog?.Changed || [];\nconst fixed = data.changelog?.Fixed || [];\nconst documentation = data.changelog?.Documentation || [];\nconst other = data.changelog?.Other || [];\n\nfunction createList(items) {\n  if (!items.length) {\n    return '<p class=\"empty\">No changes in this category.</p>';\n  }\n\n  return '<ul>' + items.map(item => `<li>${item}</li>`).join('') + '</ul>';\n}\n\nconst html = `\n<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n\n<title>${data.release_title || 'Release Notes'}</title>\n\n<style>\n\n* {\n  box-sizing: border-box;\n}\n\nbody {\n  margin: 0;\n  font-family: Arial, Helvetica, sans-serif;\n  background: #f4f6f9;\n  color: #222;\n}\n\n.container {\n  max-width: 900px;\n  margin: 40px auto;\n  padding: 20px;\n}\n\n.header {\n  background: linear-gradient(135deg, #4f46e5, #7c3aed);\n  color: white;\n  padding: 40px;\n  border-radius: 20px;\n  box-shadow: 0 10px 30px rgba(0,0,0,0.15);\n}\n\n.header h1 {\n  margin: 0 0 10px;\n  font-size: 34px;\n}\n\n.version {\n  display: inline-block;\n  background: rgba(255,255,255,0.2);\n  padding: 7px 14px;\n  border-radius: 20px;\n  font-weight: bold;\n}\n\n.summary {\n  margin-top: 20px;\n  font-size: 17px;\n  line-height: 1.6;\n}\n\n.card {\n  background: white;\n  margin-top: 22px;\n  padding: 25px;\n  border-radius: 16px;\n  box-shadow: 0 5px 20px rgba(0,0,0,0.08);\n}\n\n.card h2 {\n  margin-top: 0;\n  font-size: 22px;\n}\n\n.card ul {\n  padding-left: 22px;\n}\n\n.card li {\n  margin: 10px 0;\n  line-height: 1.5;\n}\n\n.added {\n  border-left: 6px solid #22c55e;\n}\n\n.changed {\n  border-left: 6px solid #3b82f6;\n}\n\n.fixed {\n  border-left: 6px solid #ef4444;\n}\n\n.docs {\n  border-left: 6px solid #f59e0b;\n}\n\n.other {\n  border-left: 6px solid #8b5cf6;\n}\n\n.empty {\n  color: #888;\n  font-style: italic;\n}\n\n.footer {\n  text-align: center;\n  margin-top: 30px;\n  color: #777;\n  font-size: 14px;\n}\n\n</style>\n</head>\n\n<body>\n\n<div class=\"container\">\n\n  <div class=\"header\">\n\n    <h1>🚀 ${data.release_title || 'Release Notes'}</h1>\n\n    <span class=\"version\">\n      ${data.version || 'Version'}\n    </span>\n\n    <p class=\"summary\">\n      ${data.summary || 'No summary available.'}\n    </p>\n\n  </div>\n\n\n  <div class=\"card added\">\n\n    <h2>✨ Added</h2>\n\n    ${createList(added)}\n\n  </div>\n\n\n  <div class=\"card changed\">\n\n    <h2>🔄 Changed</h2>\n\n    ${createList(changed)}\n\n  </div>\n\n\n  <div class=\"card fixed\">\n\n    <h2>🐛 Fixed</h2>\n\n    ${createList(fixed)}\n\n  </div>\n\n\n  <div class=\"card docs\">\n\n    <h2>📚 Documentation</h2>\n\n    ${createList(documentation)}\n\n  </div>\n\n\n  <div class=\"card other\">\n\n    <h2>📌 Other</h2>\n\n    ${createList(other)}\n\n  </div>\n\n\n  <div class=\"footer\">\n\n    Generated automatically using n8n + Groq AI\n\n  </div>\n\n</div>\n\n</body>\n</html>\n`;\n\nreturn [\n  {\n    json: {\n      ...data,\n      html: html\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        0
+      ],
+      "id": "781ccfb3-d777-42d6-b358-73df842d1f31",
+      "name": "generate html"
+    },
+    {
+      "parameters": {},
+      "id": "bd45b85a-98df-4e5a-ac7a-d977ed8fadb0",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Git Commits Input": {
+      "main": [
+        [
+          {
+            "node": "Groq - Draft Release Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq - Draft Release Notes": {
+      "main": [
+        [
+          {
+            "node": "Format Final Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Final Output": {
+      "main": [
+        [
+          {
+            "node": "generate html",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "generate html": {
+      "main": [
+        []
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Git Commits Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "ebb8863d-8a78-40df-8499-69169615dce3",
+  "meta": {
+    "instanceId": "249105467cd6d696328869ddc74ddfae7e0204e872037624b2d6d2356e9a0992"
+  },
+  "nodeGroups": [],
+  "id": "nbDHzEutkVzeSIKL",
+  "tags": []
+}
